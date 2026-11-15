@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { RotateCcw, Download, Sparkles, RefreshCw, Globe, ExternalLink, Clock, Zap, CheckCircle2, Timer, Code2 } from "lucide-react";
+import { RotateCcw, Download, Sparkles, Globe, ExternalLink, Clock, Zap, CheckCircle2, Timer, Code2 } from "lucide-react";
 import EvaluationScorecard from "../components/EvaluationScorecard";
 import ResumeScorecard from "../components/ResumeScorecard";
 import AICostReport from "../components/AICostReport";
-import { loadSession, saveSession, clearSession } from "../utils/storage";
+import { loadSession, clearSession } from "../utils/storage";
 import type { InterviewSession } from "../utils/storage";
 import { downloadResultsAsPDF } from "../utils/pdf";
 
@@ -28,16 +28,6 @@ export default function ResultsPage() {
   const handleTryAgain = () => {
     clearSession();
     navigate("/");
-  };
-
-  const handleRetrySpecificQuestion = (index: number) => {
-    const updatedSession: InterviewSession = {
-      ...session,
-      currentQuestionIndex: index,
-      status: "in_progress",
-    };
-    saveSession(updatedSession);
-    navigate("/interview");
   };
 
   const handleDownloadPDF = () => {
@@ -80,13 +70,13 @@ export default function ResultsPage() {
 
       {/* AI Processing Cost Ledger */}
       <section className="animate-slide-up">
-        <h2 className="text-lg font-bold text-foreground mb-3">Billing & AI Cost Ledger</h2>
+        <h2 className="text-lg font-bold text-foreground mb-3">Practice session details</h2>
         <AICostReport session={session} />
       </section>
 
       {/* Questions Review */}
       <section className="animate-fade-in" style={{ animationDelay: "0.3s" }}>
-        <h2 className="text-lg font-bold text-foreground mb-4">Question Review & Retry</h2>
+        <h2 className="text-lg font-bold text-foreground mb-4">Question Review</h2>
         <div className="space-y-3">
           {session.questions.map((q, i) => (
             <div key={q.id} className="card p-4 animate-fade-in space-y-3" style={{ animationDelay: `${0.3 + i * 0.1}s` }}>
@@ -213,14 +203,6 @@ export default function ResultsPage() {
                       <span className="text-sm font-bold text-primary">{q.score}/10</span>
                     </div>
                   )}
-                  <button
-                    onClick={() => handleRetrySpecificQuestion(i)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-semibold hover:bg-secondary/80 transition-colors cursor-pointer"
-                    title="Retry this specific question"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Retry Q{i + 1}
-                  </button>
                 </div>
               </div>
             </div>

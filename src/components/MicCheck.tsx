@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Mic, CheckCircle2, AlertCircle, RefreshCw, Volume2, ShieldCheck } from "lucide-react";
+import { Mic, CheckCircle2, AlertCircle, RefreshCw, Volume2 } from "lucide-react";
 
 interface MicCheckProps {
   onVerified?: (verified: boolean) => void;

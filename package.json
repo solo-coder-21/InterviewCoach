@@ -1,16 +1,19 @@
 {
-  "name": "my-app",
+  "name": "interview-coach",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs"
+    "start": "node dist/server.cjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.16.0",
     "@monaco-editor/react": "^4.7.0",
+    "@supabase/supabase-js": "^2.119.0",
     "@tailwindcss/vite": "^4.1.18",
     "@vercel/analytics": "^2.0.1",
     "dotenv": "^17.4.2",
@@ -26,6 +29,7 @@
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@types/express": "^5.0.6",
     "@types/node": "^24.10.1",
     "@types/react": "^18.3.1",
@@ -37,5 +41,11 @@
     "typescript": "~5.9.3",
     "vite": "^7.2.4",
     "vite-plugin-svgr": "^4.5.0"
+  },
+  "overrides": {
+    "dompurify": "^3.4.17"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

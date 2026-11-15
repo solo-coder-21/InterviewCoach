@@ -1,9 +1,12 @@
+import { authorizedFetch, APIError } from "./accountApi";
+import { loadSession } from "./storage";
 async function callEdgeFunction(functionName: string, body: unknown): Promise<Response> {
   const url = `/api/${functionName}`;
-  return fetch(url, {
+  const session = loadSession();
+  return authorizedFetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", ...(session ? { "X-Interview-Id": session.id } : {}) },
+    body: JSON.stringify({ ...(body as object), ...(session ? { interviewId: session.id, questionId: session.questions[session.currentQuestionIndex]?.id } : {}) }),
   });
 }
 
@@ -49,6 +52,7 @@ export interface QuestionItem {
 }
 
 export interface GeneratedQuestions {
+  candidateName?: string;
   questions: (string | QuestionItem)[];
   source?: string;
   snippetsCount?: number;
@@ -118,7 +122,7 @@ export async function callGoogleAI(req: GoogleAIRequest): Promise<GoogleAIRespon
     const res = await callEdgeFunction("google-ai-chat", req);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to contact AI" }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw new APIError(res.status, err.error || `HTTP ${res.status}`);
     }
     const data = await res.json();
     notifyAIStatus(false, actionName, data.source || "Gemini 2.5 Flash");

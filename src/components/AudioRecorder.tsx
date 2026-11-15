@@ -16,7 +16,7 @@ type MicState =
   | { status: "connecting" }
   | { status: "recording" }
   | { status: "error"; message: string }
-  | { status: "unsupported" };
+  | { status: "unsupported"; message: string };
 
 export default function AudioRecorder({
   isRecording,

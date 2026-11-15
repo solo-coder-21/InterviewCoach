@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Activity, ShieldCheck, RefreshCw, X, CheckCircle2, Mic, Sparkles } from "lucide-react";
 import { useAIStatus } from "../context/AIStatusContext";
 

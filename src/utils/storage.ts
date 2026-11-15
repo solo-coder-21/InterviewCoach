@@ -1,3 +1,5 @@
+import { persistProgress } from './accountApi';
+
 export interface ResumeScoreData {
   overallScore: number;
   matchLevel: string;
@@ -9,6 +11,7 @@ export interface ResumeScoreData {
 
 export interface InterviewSession {
   id: string;
+  ownerId: string;
   resumeText: string;
   company: string;
   role: string;
@@ -62,26 +65,50 @@ export interface ScoreData {
   improvements?: string[];
 }
 
-const STORAGE_KEY = "ai-interview-coach-session";
-
-export function saveSession(session: InterviewSession): void {
+let ownerId: string | null = null;
+let syncQueue: Promise<void> = Promise.resolve();
+const storageKey = () => `ai-interview-coach-session:${ownerId}`;
+export function setStorageOwner(id: string | null) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    if (ownerId && ownerId !== id) localStorage.removeItem(storageKey());
+    localStorage.removeItem('ai-interview-coach-session');
+  } catch { /* The authenticated account still works when browser storage is blocked. */ }
+  ownerId = id;
+}
+
+export function saveSession(session: InterviewSession, sync = true): Promise<void> {
+  if (!ownerId || session.ownerId !== ownerId) return Promise.resolve();
+  try {
+    localStorage.setItem(storageKey(), JSON.stringify(session));
   } catch {
     console.warn("Failed to save session to localStorage");
   }
+  if (!sync) return Promise.resolve();
+  const snapshot = structuredClone(session);
+  syncQueue = syncQueue.then(async () => {
+    if (ownerId !== snapshot.ownerId) return;
+    try {
+      await persistProgress(snapshot);
+      if (ownerId === snapshot.ownerId) window.dispatchEvent(new Event('interview-sync-success'));
+    } catch {
+      if (ownerId === snapshot.ownerId) window.dispatchEvent(new Event('interview-sync-error'));
+    }
+  });
+  return syncQueue;
 }
 
 export function loadSession(): InterviewSession | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!ownerId) return null;
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return null;
-    return JSON.parse(raw) as InterviewSession;
+    const session = JSON.parse(raw) as InterviewSession;
+    return session.ownerId === ownerId ? session : null;
   } catch {
     return null;
   }
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  try { localStorage.removeItem(storageKey()); } catch { /* Browser storage is optional. */ }
 }

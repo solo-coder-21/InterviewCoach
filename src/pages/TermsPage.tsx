@@ -1,35 +1,13 @@
-import { ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
-
+import { ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
 export default function TermsPage() {
-  return (
-    <div className="min-h-screen bg-background text-foreground py-16 px-4">
-      <div className="max-w-4xl mx-auto">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline mb-8">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Home
-        </Link>
-        <h1 className="text-4xl font-extrabold mb-6">Terms of Service</h1>
-        <div className="prose prose-sm sm:prose-base prose-invert text-foreground/80">
-          <p className="mb-4">Last updated: August 2026</p>
-          <h2 className="text-2xl font-bold mt-8 mb-4 text-foreground">1. Educational Purpose</h2>
-          <p className="mb-4">
-            Interview Coach is an experimental, educational sandbox tool designed to help you practice interviewing skills. It relies on AI models to generate questions and feedback, which may not always be accurate, perfect, or reflect real-world interview scenarios exactly.
-          </p>
-          <h2 className="text-2xl font-bold mt-8 mb-4 text-foreground">2. Disclaimer of Warranties</h2>
-          <p className="mb-4">
-            The service is provided "as is" and "as available". We make no warranties, expressed or implied, regarding the accuracy, reliability, or availability of the service. We do not guarantee that the mock interviews will lead to real-world employment or accurately assess your technical skills.
-          </p>
-          <h2 className="text-2xl font-bold mt-8 mb-4 text-foreground">3. User Responsibility</h2>
-          <p className="mb-4">
-            You are solely responsible for the information you provide (such as your resume text) and your interactions with the AI. Do not share highly sensitive, classified, or confidential information during the mock interviews.
-          </p>
-          <h2 className="text-2xl font-bold mt-8 mb-4 text-foreground">4. Changes to Terms</h2>
-          <p className="mb-4">
-            We may revise these Terms of Service at any time without prior notice. By continuing to use the service, you agree to be bound by the current version of these Terms.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  const support = import.meta.env.VITE_SUPPORT_EMAIL;
+  return <main className="max-w-4xl mx-auto px-4 py-16 space-y-6">
+    <Link to="/" className="text-primary inline-flex gap-2 items-center"><ArrowLeft size={16} />Back to home</Link>
+    <h1 className="text-4xl font-bold">Terms of Service</h1><p className="text-sm text-foreground/60">Updated 15 November 2026</p>
+    <section className="card space-y-3"><h2 className="text-xl font-bold">Practice and feedback</h2><p>Interview Coach is an educational practice service. AI-generated or heuristic questions and scores may be inaccurate and do not guarantee employment. If the AI service is unavailable, local practice questions and feedback are used. Voice features depend on browser support and microphone permission.</p></section>
+    <section className="card space-y-3"><h2 className="text-xl font-bold">Credits and prices</h2><p>₹20 purchases 1 interview credit. ₹60 purchases 5 credits. The displayed amount is the checkout total. There is no recurring subscription. Unused credits do not expire and belong to the purchasing account.</p><p>Starting an interview reserves one credit. Each session includes 10 questions, up to 3 follow-ups per question, resume feedback and a report. You can resume an active interview for 24 hours. Completed interviews are available for review; starting another interview uses another credit.</p></section>
+    <section className="card space-y-3"><h2 className="text-xl font-bold">Failed starts and payments</h2><p>If generation fails before an interview is ready, the reserved credit is restored. A stalled start is recovered when you load your account after 10 minutes. Ending a ready interview early uses its credit. Credits are added only after Razorpay confirms a captured payment; a pending checkout does not confirm a charge.</p><p>If money was deducted and credits are missing, use Refresh payment status in your account. For payment disputes or cash refund requests, contact support with your payment reference. Cash refunds require review and are not initiated automatically by the app.</p></section>
+    <section className="card space-y-3"><h2 className="text-xl font-bold">Your account</h2><p>Keep your password secure and provide only resume and interview content you are entitled to use. Avoid confidential information. Do not attempt to bypass payments or access another user's account. Service availability depends on the configured hosting and third-party providers.</p>{support && <p>Support: <a className="text-primary underline" href={`mailto:${support}`}>{support}</a></p>}<p>See our <Link to="/privacy" className="text-primary underline">Privacy Policy</Link> for how account, interview and payment data is stored.</p></section>
+  </main>;
 }

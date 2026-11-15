@@ -1,12 +1,14 @@
 import { Link, useLocation } from "react-router-dom";
-import { Sparkles, Loader2, Cpu, AlertTriangle, Sun, Moon } from "lucide-react";
+import { Loader2, Sun, Moon } from "lucide-react";
 import { useAIStatus } from "../context/AIStatusContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 export default function Header() {
   const location = useLocation();
   const isHome = location.pathname === "/";
-  const { isProcessing, currentTask, isQuotaExceeded, setIsModalOpen } = useAIStatus();
+  const { isProcessing, currentTask, setIsModalOpen, serverStatus } = useAIStatus();
+  const { user, account } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -18,12 +20,14 @@ export default function Header() {
             alt="Interview Coach Logo"
             className="w-9 h-9 object-contain shrink-0"
           />
-          <span className="font-heading font-bold text-lg text-foreground tracking-tight">
+          <span className="hidden sm:inline font-heading font-bold text-lg text-foreground tracking-tight">
             Interview Coach
           </span>
         </Link>
 
-        <nav className="flex items-center gap-3">
+        <nav className="flex items-center gap-2 sm:gap-3">
+          <Link to="/pricing" className="text-sm font-semibold">Pricing</Link>
+          <Link to={user ? '/account' : '/auth'} className="text-sm font-semibold rounded-lg bg-primary/10 text-primary px-3 py-2">{user ? account ? `${account.credits} credits · Account` : 'Account' : 'Sign in'}</Link>
           {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
@@ -40,7 +44,7 @@ export default function Header() {
           {/* AI Active Status Button */}
           <button
             onClick={() => setIsModalOpen(true)}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-200 cursor-pointer shadow-xs ${
+            className={`hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-200 cursor-pointer shadow-xs ${
               isProcessing
                 ? "bg-blue-100/90 text-blue-950 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-800 animate-pulse"
                 : "bg-emerald-100/90 text-emerald-950 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800 hover:bg-emerald-200/80 hover:border-emerald-400 dark:hover:bg-emerald-900/60"
@@ -62,14 +66,14 @@ export default function Header() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600 dark:bg-emerald-400"></span>
                 </span>
                 <span className="text-emerald-950 dark:text-emerald-200 font-semibold">
-                  AI Agent: <strong className="text-emerald-700 dark:text-emerald-400 font-extrabold">Live</strong>
+                  {serverStatus?.hasApiKey ? 'AI practice' : 'Local practice'}
                 </span>
               </>
             )}
           </button>
 
           {!isHome && (
-            <Link to="/" className="btn-ghost text-sm">
+            <Link to="/" className="hidden lg:inline-flex btn-ghost text-sm">
               Home
             </Link>
           )}

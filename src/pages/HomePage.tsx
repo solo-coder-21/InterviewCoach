@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -9,7 +9,6 @@ import {
   BarChart3,
   Radio,
   ShieldCheck,
-  Zap,
   Video,
   Volume2,
   Globe,
@@ -17,12 +16,10 @@ import {
   ChevronUp,
   Award,
   Terminal,
-  BookOpen,
   Briefcase,
   Cpu,
   CheckCircle2,
   HelpCircle,
-  ListChecks,
   Code2,
   UserCheck,
   ExternalLink,
@@ -37,17 +34,13 @@ import DemoVideoPlayer from "../components/DemoVideoPlayer";
 import CompanyLogosBanner from "../components/CompanyLogosBanner";
 import { saveSession } from "../utils/storage";
 import type { InterviewSession } from "../utils/storage";
-
-interface QuestionItem {
-  text: string;
-  sourceType: string;
-  sourceName: string;
-  sourceUrl?: string;
-  originExplanation?: string;
-}
+import { useAuth } from "../context/AuthContext";
+import { accountAPI, APIError } from "../utils/accountApi";
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { user, account, refreshAccount } = useAuth();
+  const pendingStart = useRef<{ signature: string; id: string } | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
@@ -65,274 +58,40 @@ export default function HomePage() {
   const canStart = resumeText.trim().length > 0 && company.trim().length > 0 && role.trim().length > 0;
 
   const handleStart = async () => {
-    if (!canStart) return;
-    setIsGenerating(true);
-    setError(null);
-
-    // Ensure microphone is connected and permission granted before interview starts
+    if (!canStart || isGenerating) return;
+    if (!user) { navigate('/auth?next=/'); return; }
+    if (!account) { setError('Your account is still loading. Please try again shortly.'); void refreshAccount(); return; }
+    if (account.credits < 1 && !pendingStart.current) { navigate('/pricing'); return; }
+    setIsGenerating(true); setError(null);
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
-        setIsMicVerified(true);
+        stream.getTracks().forEach(t => t.stop()); setIsMicVerified(true);
       }
-    } catch (err: any) {
-      console.warn("Microphone pre-check failed:", err);
-      setError("Microphone permission is required before starting the interview. Please connect your mic or grant permissions.");
-      setIsGenerating(false);
-      return;
+    } catch {
+      setError('Please allow microphone access before starting. No credit has been used.');
+      setIsGenerating(false); return;
     }
-
+    const config = { resumeText, role, company, experienceLevel, interviewTrack };
+    const signature = JSON.stringify(config);
+    if (pendingStart.current?.signature !== signature) pendingStart.current = { signature, id: crypto.randomUUID() };
     try {
-      let questions: (string | QuestionItem)[] = [];
-      let questionSource: string | undefined = undefined;
-      let snippetsCount: number | undefined = undefined;
-      let resumeScoreData: any = undefined;
-      let candidateName: string | undefined = undefined;
-
-      try {
-        const { callGoogleAI } = await import("../utils/api");
-
-        const [questionsRes, resumeScoreRes] = await Promise.allSettled([
-          callGoogleAI({
-            action: "generate-questions",
-            resumeText,
-            role,
-            company,
-            experienceLevel,
-            interviewTrack,
-          }),
-          callGoogleAI({
-            action: "score-resume",
-            resumeText,
-            role,
-            company,
-          }),
-        ]);
-
-        if (
-          questionsRes.status === "fulfilled" &&
-          "questions" in questionsRes.value &&
-          questionsRes.value.questions
-        ) {
-          questions = questionsRes.value.questions;
-          questionSource = questionsRes.value.source;
-          snippetsCount = questionsRes.value.snippetsCount;
-          if (typeof questionsRes.value.candidateName === "string") {
-            candidateName = questionsRes.value.candidateName;
-          }
-        }
-
-        if (
-          resumeScoreRes.status === "fulfilled" &&
-          "overallScore" in resumeScoreRes.value &&
-          typeof resumeScoreRes.value.overallScore === "number"
-        ) {
-          resumeScoreData = resumeScoreRes.value;
-        }
-      } catch {
-        // Fallback handled in server or default array
-      }
-
-      if (!resumeScoreData) {
-        resumeScoreData = {
-          overallScore: 78,
-          matchLevel: "Good Match",
-          summary: `Your resume shows strong relevance for the ${role} position (${experienceLevel}) at ${company}.`,
-          strengths: [
-            `Demonstrates qualifications relevant to ${role}`,
-            `Clear educational and career progression`,
-            `Solid skill foundation for ${company}`
-          ],
-          gaps: [
-            `Include more quantifiable bullet points`,
-            `Highlight specific toolsets favored for ${role}`
-          ],
-          recommendations: [
-            `Align resume keywords with the ${role} job description`,
-            `Emphasize impact metrics in project descriptions`
-          ]
-        };
-      }
-
-      const getFirstNameOnly = (nameStr: string) => {
-        if (!nameStr) return "";
-        const cleanName = nameStr.trim().split(/[\s,]+/)[0];
-        // Capitalize nicely
-        return cleanName.charAt(0).toUpperCase() + cleanName.slice(1).toLowerCase();
-      };
-
-      const firstName = getFirstNameOnly(candidateName || "");
-
-      const session: InterviewSession = {
-        id: crypto.randomUUID(),
-        resumeText,
-        company,
-        role,
-        experienceLevel,
-        candidateName: firstName || undefined,
-        interviewTrack,
-        questions: questions.map((q, idx) => {
-          let defaultStage: "introduction" | "resume_deep_dive" | "core_technical_dsa" | "company_cultural_fit" = "introduction";
-          let defaultStageName = "Stage 1: Introduction & Background";
-          let defaultAgent = "Senior AI Technical Interviewer";
-
-          if (interviewTrack === "resume") {
-            defaultAgent = "Senior AI Resume Specialist";
-            defaultStageName = "Stage 1: Resume Intro & Overview";
-            if (idx >= 2 && idx < 5) {
-              defaultStage = "resume_deep_dive";
-              defaultStageName = "Stage 2: Tech Project Deep Dive";
-            } else if (idx >= 5 && idx < 8) {
-              defaultStage = "core_technical_dsa";
-              defaultStageName = "Stage 3: Resume Decisions & Trade-offs";
-            } else if (idx >= 8) {
-              defaultStage = "company_cultural_fit";
-              defaultStageName = "Stage 4: Resume-Tailored Teamwork";
-            }
-          } else if (interviewTrack === "ai") {
-            defaultAgent = "Senior AI Research Scientist";
-            defaultStageName = "Stage 1: AI Trends & Architectures";
-            if (idx >= 2 && idx < 5) {
-              defaultStage = "resume_deep_dive";
-              defaultStageName = "Stage 2: Custom AI Project Deep Dive";
-            } else if (idx >= 5 && idx < 8) {
-              defaultStage = "core_technical_dsa";
-              defaultStageName = "Stage 3: LLM Mechanics & Sandbox";
-            } else if (idx >= 8) {
-              defaultStage = "company_cultural_fit";
-              defaultStageName = "Stage 4: AI Safety & Guardrails";
-            }
-          } else if (interviewTrack === "technical") {
-            defaultAgent = "Lead Systems Architect";
-            defaultStageName = "Stage 1: Technical Foundations";
-            if (idx >= 2 && idx < 5) {
-              defaultStage = "resume_deep_dive";
-              defaultStageName = "Stage 2: Core Domain & Architecture";
-            } else if (idx >= 5 && idx < 8) {
-              defaultStage = "core_technical_dsa";
-              defaultStageName = "Stage 3: Algorithms & written code";
-            } else if (idx >= 8) {
-              defaultStage = "company_cultural_fit";
-              defaultStageName = "Stage 4: Production Bottlenecks";
-            }
-          } else if (interviewTrack === "behavioral") {
-            defaultAgent = "Lead Talent Partner";
-            defaultStageName = "Stage 1: Motivation & Alignment";
-            if (idx >= 2 && idx < 5) {
-              defaultStage = "resume_deep_dive";
-              defaultStageName = "Stage 2: STAR Behavioral Scenarios";
-            } else if (idx >= 5 && idx < 8) {
-              defaultStage = "core_technical_dsa";
-              defaultStageName = "Stage 3: Team Collaboration";
-            } else if (idx >= 8) {
-              defaultStage = "company_cultural_fit";
-              defaultStageName = "Stage 4: Leadership & Failure";
-            }
-          } else {
-            if (idx >= 2 && idx < 5) {
-              defaultStage = "resume_deep_dive";
-              defaultStageName = "Stage 2: Resume Deep Dive";
-            } else if (idx >= 5 && idx < 8) {
-              defaultStage = "core_technical_dsa";
-              defaultStageName = "Stage 3: Core Role, DSA & System Execution";
-            } else if (idx >= 8) {
-              defaultStage = "company_cultural_fit";
-              defaultStageName = "Stage 4: Company Context & Cultural Fit";
-            }
-          }
-
-          if (typeof q === "string") {
-            let processedText = q;
-            if (firstName && idx === 0) {
-              const lowerText = processedText.toLowerCase();
-              const lowerFirst = firstName.toLowerCase();
-              
-              const hasName = lowerText.includes(lowerFirst);
-              const hasPlaceholder = lowerText.includes("[candidate name]") || lowerText.includes("candidate name") || lowerText.includes("[candidate's name]");
-              
-              if (hasPlaceholder) {
-                processedText = processedText.replace(/\[?candidate's? name\]?/gi, firstName);
-              } else if (!hasName) {
-                if (lowerText.startsWith("hello and welcome")) {
-                  processedText = processedText.replace(/hello and welcome/i, `Hello ${firstName} and welcome`);
-                } else if (lowerText.startsWith("hello")) {
-                  processedText = processedText.replace(/hello/i, `Hello ${firstName}`);
-                } else if (lowerText.startsWith("welcome")) {
-                  processedText = processedText.replace(/welcome/i, `Welcome ${firstName}`);
-                } else {
-                  processedText = `Hello ${firstName}, welcome! ` + processedText;
-                }
-              }
-            }
-
-            return {
-              id: crypto.randomUUID(),
-              text: processedText,
-              stage: defaultStage,
-              stageName: defaultStageName,
-              agentName: defaultAgent,
-              sourceType: "web_grounded_scraped",
-              sourceName: "Glassdoor / LeetCode",
-              originExplanation: `Extracted for ${company} ${role} (${experienceLevel})`,
-            };
-          }
-
-          let processedText = q.text;
-          if (firstName && idx === 0) {
-            const lowerText = processedText.toLowerCase();
-            const lowerFirst = firstName.toLowerCase();
-            
-            const hasName = lowerText.includes(lowerFirst);
-            const hasPlaceholder = lowerText.includes("[candidate name]") || lowerText.includes("candidate name") || lowerText.includes("[candidate's name]");
-            
-            if (hasPlaceholder) {
-              processedText = processedText.replace(/\[?candidate's? name\]?/gi, firstName);
-            } else if (!hasName) {
-              if (lowerText.startsWith("hello and welcome")) {
-                processedText = processedText.replace(/hello and welcome/i, `Hello ${firstName} and welcome`);
-              } else if (lowerText.startsWith("hello")) {
-                processedText = processedText.replace(/hello/i, `Hello ${firstName}`);
-              } else if (lowerText.startsWith("welcome")) {
-                processedText = processedText.replace(/welcome/i, `Welcome ${firstName}`);
-              } else {
-                processedText = `Hello ${firstName}, welcome! ` + processedText;
-              }
-            }
-          }
-
-          return {
-            id: crypto.randomUUID(),
-            text: processedText,
-            stage: q.stage || defaultStage,
-            stageName: q.stageName || defaultStageName,
-            agentName: q.agentName || defaultAgent,
-            sourceType: q.sourceType,
-            sourceName: q.sourceName,
-            sourceUrl: q.sourceUrl,
-            originExplanation: q.originExplanation,
-          };
-        }),
-        currentQuestionIndex: 0,
-        status: "in_progress",
-        resumeScore: resumeScoreData,
-        questionSource: questionSource || "google_search_grounding",
-        snippetsCount: snippetsCount || 10,
-        createdAt: new Date().toISOString(),
-      };
-
-      saveSession(session);
-      navigate("/interview");
-    } catch (err: any) {
-      setError(err.message || "Failed to start interview. Please try again.");
-    } finally {
-      setIsGenerating(false);
-    }
+      const { session } = await accountAPI<{ session: InterviewSession }>('interviews', 'POST', { ...config, requestId: pendingStart.current!.id });
+      await saveSession(session, false);
+      pendingStart.current = null;
+      await refreshAccount();
+      navigate(session.status === 'completed' ? '/results' : '/interview');
+    } catch (err) {
+      if (err instanceof APIError && [400, 402, 409, 502].includes(err.status)) pendingStart.current = null;
+      setError(err instanceof Error ? err.message : 'Could not start. Check your account before trying again.');
+      await refreshAccount();
+    } finally { setIsGenerating(false); }
   };
 
   return (
     <div className="min-h-screen flex flex-col justify-between bg-background">
       <main className="flex-grow bg-background text-foreground pb-24">
+      <div className="bg-primary/10 text-center px-4 py-3 text-sm">Practice from ₹12 per interview. <Link to="/pricing" className="font-bold underline">₹20 for one · ₹60 for five</Link>{user && account ? ` · ${account.credits} credits available` : " · No subscription"}</div>
       
       {/* 1. Hero Banner matching reference design */}
       <section className="relative overflow-hidden bg-gradient-to-b from-primary/10 via-background to-background pt-12 pb-16 border-b border-border/40">
@@ -577,6 +336,7 @@ export default function HomePage() {
 
                 {/* Pre-Interview Microphone Check & Connection */}
                 <MicCheck onVerified={setIsMicVerified} />
+                {isMicVerified && <p className="text-xs text-primary">Microphone ready. Starting an interview uses 1 credit. <Link to="/pricing" className="underline">View packs</Link></p>}
 
                 {error && (
                   <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2">
@@ -604,11 +364,11 @@ export default function HomePage() {
                   {isGenerating ? (
                     <>
                       <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                      <span>Generating Live AI Grounded Interview...</span>
+                      <span>Preparing your interview…</span>
                     </>
                   ) : (
                     <>
-                      <span>Launch Live Practicing Call</span>
+                      <span>Start interview · 1 credit</span>
                       <ArrowRight className="w-5 h-5" />
                     </>
                   )}
@@ -636,7 +396,7 @@ export default function HomePage() {
           {[
             { icon: FileText, label: "1. Load Background & Profile", desc: "Upload resume to feed relevant details directly into core questions" },
             { icon: Mic, label: "2. Speak via Real-time Call", desc: "Listen carefully to natural AI feedback and answer orally" },
-            { icon: BarChart3, label: "3. Detailed ledger & rubrics", desc: "Instantly view overall scoring, feedback, and actual hardware billing lists" },
+            { icon: BarChart3, label: "3. Feedback & performance", desc: "Instantly view overall scoring, feedback, and your interview credit usage" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div key={i} className="text-center p-5 rounded-xl bg-card border border-border/60 shadow-xs hover:scale-[1.01] transition-transform">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
@@ -935,8 +695,8 @@ export default function HomePage() {
               a: "We highly recommend using the STAR framework (Situation, Task, Action, Result). State the initial problem, specify what you were responsible for, detail your exact implementation steps, and conclude with measurable impact metrics."
             },
             {
-              q: "How is the dynamic billing ledger calculated?",
-              a: "Every transaction lists close estimations of Google Gemini Flash API token costs, Glassdoor scraper queries, Speechmatics high-fidelity speech-to-text seconds, and conversational text-to-speech character lengths. Our automated ledger simulates identical infrastructure costs to highlight overall efficiency."
+              q: "How much does an interview cost?",
+              a: "One interview costs ₹20, or buy five for ₹60 (₹12 each). Starting a session uses one credit, including questions, follow-ups and your report. There is no subscription. Unused credits never expire; resume an active session for 24 hours. Failed generation restores your credit."
             }
           ].map((faq, idx) => {
             const isExpanded = expandedFAQ === idx;
@@ -1055,7 +815,7 @@ export default function HomePage() {
               <li>
                 <span className="text-foreground/40 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>SOC2 Sandbox Compliant</span>
+                  <span>Secure account access</span>
                 </span>
               </li>
             </ul>
@@ -1063,10 +823,10 @@ export default function HomePage() {
         </div>
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-border/20 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-foreground/45">
-          <p>© 2026 Interview Coach. Fully sandboxed mock server pricing & billing ledger. All rights reserved.</p>
+          <p>Interview Coach. Practice with purpose.</p>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>All systems operational</span>
+            <span>Practice at your pace</span>
           </div>
         </div>
       </footer>

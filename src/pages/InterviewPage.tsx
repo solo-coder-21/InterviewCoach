@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CheckCircle, Loader2, Volume2, VolumeX, FileText, ChevronDown, ChevronUp, Globe, Mic, Radio, Video, Sparkles, MessageSquare, ShieldCheck, UserCheck, PhoneOff, Code2, Terminal, HelpCircle, SkipForward } from "lucide-react";
-import QuestionCard from "../components/QuestionCard";
+import { ArrowRight, CheckCircle, Loader2, Volume2, FileText, ChevronDown, ChevronUp, Mic, Sparkles, MessageSquare, UserCheck, PhoneOff, HelpCircle, SkipForward } from "lucide-react";
 import AudioRecorder from "../components/AudioRecorder";
 import ResumeScorecard from "../components/ResumeScorecard";
 import StreamingText from "../components/StreamingText";
@@ -9,6 +8,7 @@ import CodeEditor from "../components/CodeEditor";
 import { loadSession, saveSession } from "../utils/storage";
 import type { InterviewSession } from "../utils/storage";
 import { generateSpeechmaticsTTS } from "../utils/api";
+import { accountAPI, APIError } from "../utils/accountApi";
 import { startThinkingSound, stopThinkingSound, playCallStartSound, playCallEndSound } from "../utils/audioEffects";
 
 type CallStatus = "interviewer_speaking" | "listening" | "evaluating" | "interviewer_replying" | "transitioning";
@@ -16,6 +16,7 @@ type CallStatus = "interviewer_speaking" | "listening" | "evaluating" | "intervi
 export default function InterviewPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<InterviewSession | null>(null);
+  const [connectionError, setConnectionError] = useState('');
   
   // Call Engine States
   const [callStatus, setCallStatus] = useState<CallStatus>("interviewer_speaking");
@@ -30,7 +31,7 @@ export default function InterviewPage() {
   const [isTextRevealed, setIsTextRevealed] = useState(false);
   const [showResumeScore, setShowResumeScore] = useState(false);
   const [showCallWarning, setShowCallWarning] = useState(true);
-  const [speechBlocked, setSpeechBlocked] = useState(false);
+  const [, setSpeechBlocked] = useState(false);
   const [lastInterviewerReply, setLastInterviewerReply] = useState<string | null>(null);
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [followUpCount, setFollowUpCount] = useState<number>(0);
@@ -291,11 +292,24 @@ export default function InterviewPage() {
   useEffect(() => {
     const s = loadSession();
     if (!s || s.status !== "in_progress") {
-      navigate("/", { replace: true });
+      navigate("/account", { replace: true });
       return;
     }
-    setSession(s);
-    playCallStartSound();
+    let alive = true;
+    accountAPI<{ session: InterviewSession; status: string }>(`interviews/${s.id}`).then(data => {
+      if (!alive) return;
+      if (data.status === 'completed') {
+        void saveSession(data.session, false);
+        navigate('/results', { replace: true }); return;
+      }
+      if (data.status !== 'active' || Date.now() - new Date(data.session.createdAt).getTime() >= 86400000) {
+        navigate('/account', { replace: true }); return;
+      }
+      // Keep local progress if the previous save is awaiting a retry.
+      setSession(s);
+      void playCallStartSound();
+    }).catch(error => { if (alive) setConnectionError(error.message || 'Could not open this interview.'); });
+    return () => { alive = false; };
   }, [navigate]);
 
   // Auto-speak question when current question index changes
@@ -381,8 +395,8 @@ export default function InterviewPage() {
 
             if ("summary" in sumRes && sumRes.summary) {
               netSummary = sumRes.summary;
-              if (Array.isArray(sumRes.mistakes)) mistakes = sumRes.mistakes;
-              if (Array.isArray(sumRes.improvements)) improvements = sumRes.improvements;
+              if ("mistakes" in sumRes && Array.isArray(sumRes.mistakes)) mistakes = sumRes.mistakes;
+              if ("improvements" in sumRes && Array.isArray(sumRes.improvements)) improvements = sumRes.improvements;
             }
           } catch (err) {
             console.warn("Failed to generate summary with AI:", err);
@@ -407,7 +421,7 @@ export default function InterviewPage() {
           },
         };
 
-        saveSession(completedSession);
+        await saveSession(completedSession);
         navigate("/results", { replace: true });
       } catch (err) {
         console.error("Error finalizing early end call:", err);
@@ -502,7 +516,11 @@ export default function InterviewPage() {
             interviewerReply = result.interviewerReply;
           }
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof APIError && [401, 403, 404, 429].includes(error.status)) {
+          navigate('/account', { replace: true });
+          throw error;
+        }
         const wordCount = (fullAnswerTranscript + " " + fullWrittenCode).split(/\s+/).length;
         const currentTurnNum = followUpCount + (isFollowUp ? 1 : 0);
         const lowerAns = fullAnswerTranscript.toLowerCase();
@@ -652,8 +670,8 @@ export default function InterviewPage() {
 
           if ("summary" in sumRes && sumRes.summary) {
             netSummary = sumRes.summary;
-            if (Array.isArray(sumRes.mistakes)) mistakes = sumRes.mistakes;
-            if (Array.isArray(sumRes.improvements)) improvements = sumRes.improvements;
+            if ("mistakes" in sumRes && Array.isArray(sumRes.mistakes)) mistakes = sumRes.mistakes;
+            if ("improvements" in sumRes && Array.isArray(sumRes.improvements)) improvements = sumRes.improvements;
           }
         } catch (err) {
           console.warn("Failed to generate summary with AI:", err);
@@ -675,7 +693,7 @@ export default function InterviewPage() {
           },
         };
 
-        saveSession(completedSession);
+        await saveSession(completedSession);
         
         // Final wrap-up audio before navigating to results
         speakText("That completes all our questions for today! Finalizing your interview scorecard now.", async () => {
@@ -705,7 +723,8 @@ export default function InterviewPage() {
     return (
       <div className="flex flex-col items-center justify-center h-[70vh] gap-3">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-sm font-semibold text-foreground/70">Connecting to AI Call Room...</p>
+        <p className="text-sm font-semibold text-foreground/70" role={connectionError ? 'alert' : 'status'}>{connectionError || 'Opening your interview…'}</p>
+        {connectionError && <button className="btn-secondary" onClick={() => navigate('/account')}>Back to account</button>}
       </div>
     );
   }

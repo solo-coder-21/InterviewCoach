@@ -14,11 +14,7 @@ import {
   Radio,
   UserCheck,
   MousePointer2,
-  CheckCircle2,
-  Layers,
-  Send,
   Terminal,
-  MessageSquare
 } from "lucide-react";
 
 interface DemoVideoPlayerProps {
